@@ -1,56 +1,102 @@
 import streamlit as st
-from openai import OpenAI
+import openai
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+# Set your OpenAI API key
+openai.api_key = ${{ secrets.OPENAI_API_KEY }}
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+st.title("Hody - Your Reflective Journaling Companion")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+def get_openai_response(conversation):
+    response = openai.ChatCompletion.create(
+        model='gpt-4',
+        messages=conversation,
+        max_tokens=150,
+        temperature=0.7,
+        n=1,
+    )
+    return response['choices'][0]['message']['content'].strip()
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+if 'conversation' not in st.session_state:
+    st.session_state.conversation = []
+    st.session_state.user_input = ''
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+# Initial system prompt
+system_prompt = {
+    "role": "system",
+    "content": (
+        "You are Hody, a compassionate journaling assistant that helps users reflect deeply "
+        "on their thoughts without jumping to solutions. Your responses should make the user "
+        "feel heard and gently encourage deeper exploration."
+    )
+}
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# Initialize conversation
+if not st.session_state.conversation:
+    st.session_state.conversation.append(system_prompt)
+    st.session_state.conversation.append({
+        "role": "assistant",
+        "content": "What is on your mind today?"
+    })
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# Display conversation history
+for message in st.session_state.conversation[1:]:
+    if message['role'] == 'assistant':
+        st.markdown(f"**Hody:** {message['content']}")
+    elif message['role'] == 'user':
+        st.markdown(f"**You:** {message['content']}")
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+# User input area
+user_input = st.text_area("Your Response:", value=st.session_state.user_input, height=150)
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+# Action buttons
+col1, col2 = st.columns(2)
+with col1:
+    go_deeper = st.button("Go Deeper")
+with col2:
+    finish_entry = st.button("Finish Entry")
+
+# Handle "Go Deeper" action
+if go_deeper and user_input.strip() != '':
+    # Append user's message
+    st.session_state.conversation.append({"role": "user", "content": user_input})
+    st.session_state.user_input = ''
+
+    # Get Hody's response
+    response = get_openai_response(st.session_state.conversation)
+
+    # Append Hody's response
+    st.session_state.conversation.append({"role": "assistant", "content": response})
+
+# Handle "Finish Entry" action
+elif finish_entry and user_input.strip() != '':
+    # Append user's message
+    st.session_state.conversation.append({"role": "user", "content": user_input})
+    st.session_state.user_input = ''
+
+    # Prepare summary prompt
+    summary_prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You are Hody, a compassionate assistant. Summarize the user's reflections and "
+                "highlight any key insights in a brief manner."
+            )
+        }
+    ]
+    # Include only user's messages for summary
+    user_messages = [msg for msg in st.session_state.conversation if msg['role'] == 'user']
+    summary_prompt.extend(user_messages)
+
+    # Get summary from OpenAI
+    summary = get_openai_response(summary_prompt)
+
+    # Display summary
+    st.markdown("### Summary and Key Insights")
+    st.write(summary)
+
+    # Reset for new entry
+    st.session_state.conversation = []
+    st.session_state.user_input = ''
+
+# Update user input in session state
+st.session_state.user_input = user_input
