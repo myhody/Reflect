@@ -83,7 +83,7 @@ if go_deeper and user_input.strip() != '':
     # Get Hody's response
     try:
         response = get_openai_response(st.session_state.conversation)
-    except openai.error.AuthenticationError:
+    except openai.AuthenticationError:
         st.error("Invalid API key. Please check your OpenAI API key and try again.")
         st.stop()
 
