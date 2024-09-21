@@ -1,11 +1,16 @@
 import streamlit as st
 import openai
 
-# Set your OpenAI API key
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-
 st.title("Hody - Your Reflective Journaling Companion")
 
+# Initialize session state variables
+if 'api_key' not in st.session_state:
+    st.session_state.api_key = ''
+if 'conversation' not in st.session_state:
+    st.session_state.conversation = []
+    st.session_state.user_input = ''
+
+# Function to get OpenAI response
 def get_openai_response(conversation):
     response = openai.ChatCompletion.create(
         model='gpt-4',
@@ -16,9 +21,23 @@ def get_openai_response(conversation):
     )
     return response['choices'][0]['message']['content'].strip()
 
-if 'conversation' not in st.session_state:
-    st.session_state.conversation = []
-    st.session_state.user_input = ''
+# API Key input
+st.sidebar.header("API Key Required")
+api_key_input = st.sidebar.text_input(
+    "Enter your OpenAI API key:",
+    type="password",
+    placeholder="sk-...",
+    help="You can get your API key from https://platform.openai.com/account/api-keys",
+)
+
+if api_key_input:
+    st.session_state.api_key = api_key_input
+    openai.api_key = st.session_state.api_key
+elif st.session_state.api_key:
+    openai.api_key = st.session_state.api_key
+else:
+    st.warning("Please enter your OpenAI API key to use the app.")
+    st.stop()
 
 # Initial system prompt
 system_prompt = {
@@ -62,7 +81,11 @@ if go_deeper and user_input.strip() != '':
     st.session_state.user_input = ''
 
     # Get Hody's response
-    response = get_openai_response(st.session_state.conversation)
+    try:
+        response = get_openai_response(st.session_state.conversation)
+    except openai.error.AuthenticationError:
+        st.error("Invalid API key. Please check your OpenAI API key and try again.")
+        st.stop()
 
     # Append Hody's response
     st.session_state.conversation.append({"role": "assistant", "content": response})
@@ -88,7 +111,11 @@ elif finish_entry and user_input.strip() != '':
     summary_prompt.extend(user_messages)
 
     # Get summary from OpenAI
-    summary = get_openai_response(summary_prompt)
+    try:
+        summary = get_openai_response(summary_prompt)
+    except openai.error.AuthenticationError:
+        st.error("Invalid API key. Please check your OpenAI API key and try again.")
+        st.stop()
 
     # Display summary
     st.markdown("### Summary and Key Insights")
